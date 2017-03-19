@@ -46,7 +46,7 @@ func DecodeFile(path string) (*Pattern, error) {
 	for {
 		t := Track{}
 		err := binary.Read(f, binary.BigEndian, &t.ID)
-		if err == io.EOF {
+		if err == io.EOF || fmt.Sprintf("%c", t.ID) == "S" {
 			break
 		}
 		dummy = make([]byte, 3)
