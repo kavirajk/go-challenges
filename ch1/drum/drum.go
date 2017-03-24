@@ -2,7 +2,10 @@
 // See golang-challenge.com/go-challenge1/ for more information
 package drum
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 // Pattern is the high level representation of the
 // drum pattern contained in a .splice file.
@@ -15,14 +18,14 @@ type Pattern struct {
 }
 
 func (p Pattern) String() string {
-	var ret string
-	ret = fmt.Sprintf("Saved with HW Version: %s\n", p.Version)
-	ret += fmt.Sprintf("Tempo: %g\n", p.Tempo)
+	w := &bytes.Buffer{}
+	fmt.Fprintf(w, "Saved with HW Version: %s\n", p.Version)
+	fmt.Fprintf(w, "Tempo: %g\n", p.Tempo)
 	for i := range p.Tracks {
-		ret += fmt.Sprint(p.Tracks[i])
-		ret += "\n"
+		w.WriteString(fmt.Sprint(p.Tracks[i]))
+		w.WriteByte('\n')
 	}
-	return ret
+	return w.String()
 }
 
 type Track struct {
@@ -32,19 +35,19 @@ type Track struct {
 }
 
 func (t Track) String() string {
-	var ret string
-	ret = fmt.Sprintf("(%d) %s\t", t.ID, t.Name)
-	ret += "|"
-
+	w := &bytes.Buffer{}
+	fmt.Fprintf(w, "(%d) %s\t", t.ID, t.Name)
 	for i := range t.Steps {
-		if t.Steps[i] == 1 {
-			ret += fmt.Sprintf("%c", 'x')
-		} else {
-			ret += fmt.Sprintf("%c", '-')
+		if i%4 == 0 {
+			w.WriteByte('|')
 		}
-		if (i+1)%4 == 0 {
-			ret += "|"
+
+		if t.Steps[i] == 1 {
+			w.WriteByte('x')
+		} else {
+			w.WriteByte('-')
 		}
 	}
-	return ret
+	w.WriteByte('|')
+	return w.String()
 }
