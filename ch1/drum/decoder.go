@@ -17,21 +17,28 @@ func DecodeFile(path string) (*Pattern, error) {
 		return nil, err
 	}
 	p := &Pattern{}
-	binary.Read(f, binary.BigEndian, &p.Header)
+	header := [6]byte{}
+	if err := binary.Read(f, binary.BigEndian, &header); err != nil {
+		return nil, err
+	}
+	p.Header = fmt.Sprintf("%s", header)
 
-	dummy := make([]byte, 7)
-	binary.Read(f, binary.BigEndian, &dummy)
+	if err := binary.Read(f, binary.BigEndian, &p.Size); err != nil {
+		return nil, err
+	}
 
-	binary.Read(f, binary.BigEndian, &p.Size)
-
-	lf := &io.LimitedReader{R: f, N: int64(p.Size)}
+	lf := &io.LimitedReader{R: f, N: p.Size}
 
 	var version [32]byte
 
-	binary.Read(lf, binary.BigEndian, &version)
+	if err := binary.Read(lf, binary.BigEndian, &version); err != nil {
+		return nil, err
+	}
 
 	p.Version = strings.TrimRight(fmt.Sprintf("%s", version[:]), "\x00")
-	binary.Read(lf, binary.LittleEndian, &p.Tempo)
+	if err := binary.Read(lf, binary.LittleEndian, &p.Tempo); err != nil {
+		return nil, err
+	}
 
 	// Reading tracks
 	tracks := make([]Track, 0)
@@ -42,11 +49,18 @@ func DecodeFile(path string) (*Pattern, error) {
 			break
 		}
 		var length int32
-		binary.Read(lf, binary.BigEndian, &length)
+		if err := binary.Read(lf, binary.BigEndian, &length); err != nil {
+			return nil, err
+		}
 		title := make([]byte, length)
-		binary.Read(lf, binary.BigEndian, &title)
+
+		if err := binary.Read(lf, binary.BigEndian, &title); err != nil {
+			return nil, err
+		}
 		t.Name = fmt.Sprintf("%s", title)
-		binary.Read(lf, binary.BigEndian, &t.Steps)
+		if err := binary.Read(lf, binary.BigEndian, &t.Steps); err != nil {
+			return nil, err
+		}
 		tracks = append(tracks, t)
 	}
 	p.Tracks = tracks

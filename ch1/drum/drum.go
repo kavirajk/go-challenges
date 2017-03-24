@@ -7,8 +7,8 @@ import "fmt"
 // Pattern is the high level representation of the
 // drum pattern contained in a .splice file.
 type Pattern struct {
-	Header  [6]byte
-	Size    byte
+	Header  string
+	Size    int64
 	Version string
 	Tempo   float32
 	Tracks  []Track
