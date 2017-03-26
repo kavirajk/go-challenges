@@ -28,6 +28,28 @@ func (p Pattern) String() string {
 	return w.String()
 }
 
+func (p *Pattern) AddCowbell(cowbell [16]byte) {
+	var maxID uint8
+	for i := range p.Tracks {
+		if p.Tracks[i].ID > maxID {
+			maxID = p.Tracks[i].ID
+		}
+		if p.Tracks[i].Name == "cowbell" {
+			p.Tracks[i].Steps = cowbell
+			return
+		}
+	}
+	// cowbell not found. So add it
+	p.Tracks = append(p.Tracks, Track{
+		ID:    maxID + 1,
+		Name:  "cowbell",
+		Steps: cowbell,
+	})
+
+	// increase the size
+	p.Size += 8 + 7 + 16 // ID + name + steps
+}
+
 type Track struct {
 	ID    uint8
 	Name  string

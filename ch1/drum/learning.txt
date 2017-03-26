@@ -1,0 +1,9 @@
+- Usage of %g
+- strings.TrimRight
+- Binary encoding package
+- hex encoding package
+- io.LimitedReader
+- float representation in the computer memory
+
+TODO:
+- Integrate port audio (may be?)
