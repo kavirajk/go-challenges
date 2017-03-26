@@ -1,38 +1,10 @@
 package drum
 
 import (
-	"encoding/hex"
 	"fmt"
-	"io"
-	"log"
-	"os"
 	"path"
 	"testing"
 )
-
-func TestTODO(t *testing.T) {
-	files := []string{
-		"pattern_1.splice",
-		"pattern_2.splice",
-		"pattern_3.splice",
-		"pattern_4.splice",
-		"pattern_5.splice",
-	}
-	for _, file := range files {
-		f, err := os.Open(path.Join("fixtures/"+file, "."))
-		if err != nil {
-			log.Fatal(err)
-		}
-		buf := make([]byte, 300)
-		_, err = io.ReadFull(f, buf)
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-		// fmt.Println(buf)
-		fmt.Println(hex.Dump(buf))
-		fmt.Printf("%s\n", buf)
-	}
-}
 
 func TestDecodeFile(t *testing.T) {
 	tData := []struct {
