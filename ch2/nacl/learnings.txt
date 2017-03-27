@@ -1,0 +1,2 @@
+- nacl priv, pub cryptography
+- rand.Reader (to create arbirary no of bytes any time)

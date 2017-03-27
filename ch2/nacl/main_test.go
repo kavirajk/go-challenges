@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestReadWriterPing(t *testing.T) {
+func TestReadWriterRepeatedPing(t *testing.T) {
 	priv, pub := &[32]byte{'p', 'r', 'i', 'v'}, &[32]byte{'p', 'u', 'b'}
 
 	r, w := io.Pipe()
@@ -23,6 +23,34 @@ func TestReadWriterPing(t *testing.T) {
 
 	// Decrypt message
 	buf := make([]byte, 1024)
+	n, err := secureR.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+	buf = buf[:n]
+
+	fmt.Println(string(buf))
+	// Make sure we have hello world back
+	if res := string(buf); res != "hello world\n" {
+		t.Fatalf("Unexpected result: %s != %s", res, "hello world")
+	}
+}
+
+func TestReadWriterPing(t *testing.T) {
+	priv, pub := &[32]byte{'p', 'r', 'i', 'v'}, &[32]byte{'p', 'u', 'b'}
+
+	r, w := io.Pipe()
+	secureR := NewSecureReader(r, priv, pub)
+	secureW := NewSecureWriter(w, priv, pub)
+
+	// Encrypt hello world
+	go func() {
+		fmt.Fprintf(secureW, "hello world\n")
+		w.Close()
+	}()
+
+	// Decrypt message
+	buf := make([]byte, len("hello world\n"))
 	n, err := secureR.Read(buf)
 	if err != nil && err != io.EOF {
 		t.Fatal(err)
