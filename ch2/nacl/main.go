@@ -1,8 +1,16 @@
+// -*- mode:go;mode:go-playground -*-
+// snippet of code @ 2017-04-02 10:11:58
+
+// === Go Playground ===
+// Execute the snippet with Ctl-Return
+// Remove the snippet completely with its dir and all files M-x `go-playground-rm`
+
+// Writing secure reader and secure wirter
 package main
 
 import (
 	"crypto/rand"
-
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,98 +18,140 @@ import (
 	"net"
 	"os"
 
-	"github.com/pkg/errors"
-
 	"golang.org/x/crypto/nacl/box"
 )
 
 type secureReader struct {
 	r         io.Reader
-	priv, pub *[32]byte
+	pub, priv *[32]byte
 }
 
-func (s *secureReader) Read(p []byte) (n int, err error) {
-	nonce := [24]byte{}
-
-	_, err = io.ReadFull(s.r, nonce[:])
-	if err != nil {
-		return 0, err
+func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
+	return &secureReader{
+		r, pub, priv,
 	}
-	boxed := make([]byte, len(p)+box.Overhead)
-	n, err = s.r.Read(boxed)
+}
+
+func (sr *secureReader) Read(p []byte) (int, error) {
+	var nonce [24]byte
+
+	if n, err := io.ReadFull(sr.r, nonce[:]); err != nil {
+		return n, err
+	}
+
+	msg := make([]byte, len(p)+box.Overhead)
+
+	n, err := sr.r.Read(msg)
 	if err != nil {
 		return n, err
 	}
-	dec, ok := box.Open(nil, boxed[:n], &nonce, s.pub, s.priv)
+	dec, ok := box.Open(p[:0], msg[:n], &nonce, sr.pub, sr.priv)
 	if !ok {
-		return n, errors.New("error while decrypting")
+		return 0, errors.New("secure-read: error decrypting message")
 	}
-	copy(p, dec)
 	return len(dec), nil
-}
-
-// NewSecureReader instantiates a new SecureReader
-func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
-	return &secureReader{r, priv, pub}
 }
 
 type secureWriter struct {
 	w         io.Writer
-	priv, pub *[32]byte
+	pub, priv *[32]byte
 }
 
-func (s *secureWriter) Write(p []byte) (n int, err error) {
-	nonce := [24]byte{}
-
-	_, err = io.ReadFull(rand.Reader, nonce[:])
-	if err != nil {
-		return 0, err
+func NewSecureWriter(w io.Writer, priv, pub *[32]byte) io.Writer {
+	return &secureWriter{
+		w, pub, priv,
 	}
-	boxed := box.Seal(nonce[:], p, &nonce, s.pub, s.priv)
-	n, err = s.w.Write(boxed)
-	if err != nil {
+}
+
+func (sw *secureWriter) Write(p []byte) (int, error) {
+	var nonce [24]byte
+
+	if n, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
+		return n, err
+	}
+
+	enc := box.Seal(nonce[:], p, &nonce, sw.pub, sw.priv)
+
+	if n, err := sw.w.Write(enc); err != nil {
 		return n, err
 	}
 	return len(p), nil
+
 }
 
-// NewSecureWriter instantiates a new SecureWriter
-func NewSecureWriter(w io.Writer, priv, pub *[32]byte) io.Writer {
-	return &secureWriter{w, priv, pub}
-}
-
-type secureCon struct {
-	io.Reader
-	io.Writer
-	io.Closer
-}
-
-// Dial generates a private/public key pair,
-// connects to the server, perform the handshake
-// and return a reader/writer.
-func Dial(addr string) (io.ReadWriteCloser, error) {
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		return nil, errors.Wrap(err, "nacl.Dial")
-	}
+func Dial(addrs string) (io.ReadWriteCloser, error) {
 	pub, priv, err := box.GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, errors.Wrap(err, "Dial.GenerateKey")
+		return nil, err
 	}
-	sReader := &secureReader{conn, pub, priv}
-	sWriter := &secureWriter{conn, pub, priv}
-	return &secureCon{sReader, sWriter, conn}, nil
+
+	conn, err := net.Dial("tcp", addrs)
+	if err != nil {
+		return nil, err
+	}
+
+	// exchange keys
+
+	// read server public key
+
+	serverPub := new([32]byte)
+	if _, err := io.ReadFull(conn, serverPub[:]); err != nil {
+		return nil, err
+	}
+
+	// write client public key
+
+	if _, err := conn.Write(pub[:]); err != nil {
+		return nil, err
+	}
+
+	return struct {
+		io.Reader
+		io.Writer
+		io.Closer
+	}{
+		NewSecureReader(conn, priv, serverPub),
+		NewSecureWriter(conn, priv, serverPub),
+		conn,
+	}, nil
 }
 
-// Serve starts a secure echo server on the given listener.
 func Serve(l net.Listener) error {
+	pub, priv, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		return err
+	}
 	for {
-		client, err := l.Accept()
+		conn, err := l.Accept()
 		if err != nil {
-			return errors.Wrap(err, "nacl.Serve")
+			return err
 		}
-		defer client.Close()
-		io.Copy(client, client)
+		go handleConn(conn, pub, priv)
+	}
+}
+
+func handleConn(conn net.Conn, pub, priv *[32]byte) {
+	defer conn.Close()
+
+	// write server public key
+	if _, err := conn.Write(pub[:]); err != nil {
+		log.Println("public key write error", err)
+		return
+	}
+
+	// receive client's public key
+	clientPub := new([32]byte)
+
+	if _, err := io.ReadFull(conn, clientPub[:]); err != nil {
+		log.Println("client public key read error", err)
+	}
+
+	sW := NewSecureWriter(conn, priv, clientPub)
+	sR := NewSecureReader(conn, priv, clientPub)
+
+	if _, err := io.Copy(sW, sR); err != nil {
+		log.Println("conn failed", err)
+		return
 	}
 }
 
@@ -109,7 +159,7 @@ func main() {
 	port := flag.Int("l", 0, "Listen mode. Specify port")
 	flag.Parse()
 
-	// Server mode
+	// server mode
 	if *port != 0 {
 		l, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 		if err != nil {
@@ -119,10 +169,11 @@ func main() {
 		log.Fatal(Serve(l))
 	}
 
-	// Client mode
-	if len(os.Args) != 3 {
+	// client mode
+	if (len(os.Args)) != 3 {
 		log.Fatalf("Usage: %s <port> <message>", os.Args[0])
 	}
+
 	conn, err := Dial("localhost:" + os.Args[1])
 	if err != nil {
 		log.Fatal(err)
@@ -130,10 +181,11 @@ func main() {
 	if _, err := conn.Write([]byte(os.Args[2])); err != nil {
 		log.Fatal(err)
 	}
+
 	buf := make([]byte, len(os.Args[2]))
 	n, err := conn.Read(buf)
 	if err != nil && err != io.EOF {
 		log.Fatal(err)
 	}
-	fmt.Printf("%s\n", buf[:n])
+	fmt.Println(string(buf[:n]))
 }
